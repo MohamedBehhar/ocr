@@ -1,16 +1,13 @@
-version: "3.9"
-
 services:
-  ocr:
-    build: .
-    container_name: ocr_app
-
-    # Mount local folders into the container
-    volumes:
-      - ./input:/app/input       # drop your images here
-      - ./output:/app/output     # results saved here
-      - ./ocr_test.py:/app/ocr_test.py  # live-reload your script
-
-    # Default: run demo
-    # Override with: docker compose run ocr python ocr_test.py input/photo.jpg french
-    command: python ocr_test.py
+  ocr-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
