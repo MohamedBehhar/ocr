@@ -8,17 +8,17 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+# Install CPU-only PyTorch first to avoid pulling in 2GB of CUDA libraries
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download models + trigger C++ compilation at build time
+# Pre-download EasyOCR models at build time so first request is instant
 RUN python -c "\
 import numpy as np; \
-from paddleocr import PaddleOCR; \
+import easyocr; \
+reader = easyocr.Reader(['ar', 'en'], gpu=False); \
 img = np.ones((100, 300, 3), dtype=np.uint8) * 255; \
-ocr_ar = PaddleOCR(use_angle_cls=True, lang='arabic', use_gpu=False, show_log=False); \
-ocr_ar.ocr(img, cls=True); \
-ocr_fr = PaddleOCR(use_angle_cls=True, lang='french', use_gpu=False, show_log=False); \
-ocr_fr.ocr(img, cls=True)"
+reader.readtext(img)"
 
 COPY main.py .
 
