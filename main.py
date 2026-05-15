@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timezone
 
 import cv2
+import easyocr
 import numpy as np
 import pdf2image
 import pika
@@ -34,19 +35,19 @@ RK_DOCUMENT_OCR_FAILED    = "document.ocr.failed"
 
 app = FastAPI()
 
-# Two lazy singletons — initialized inside consumer thread to avoid blocking uvicorn startup
-_ocr_instances: dict = {}
-_ocr_lock = threading.Lock()
+# Lazy singleton — initialized inside consumer thread to avoid blocking uvicorn startup
+_reader: easyocr.Reader | None = None
+_reader_lock = threading.Lock()
 
-def get_ocr(lang: str):
-    if lang not in _ocr_instances:
-        with _ocr_lock:
-            if lang not in _ocr_instances:
-                from paddleocr import PaddleOCR
-                logger.info("Initializing PaddleOCR lang=%s…", lang)
-                _ocr_instances[lang] = PaddleOCR(use_angle_cls=True, lang=lang, use_gpu=False, show_log=False)
-                logger.info("PaddleOCR lang=%s ready.", lang)
-    return _ocr_instances[lang]
+def get_reader() -> easyocr.Reader:
+    global _reader
+    if _reader is None:
+        with _reader_lock:
+            if _reader is None:
+                logger.info("Initializing EasyOCR (ar, en)…")
+                _reader = easyocr.Reader(['ar', 'en'], gpu=False)
+                logger.info("EasyOCR ready.")
+    return _reader
 
 LATIN_KEYWORDS = {
     'ROYAUME', 'MAROC', 'CARTE', 'NATIONALE', 'IDENTITE', 'DIDENTIIE',
@@ -56,18 +57,9 @@ LATIN_KEYWORDS = {
 
 # ── OCR helpers ───────────────────────────────────────────────────────────────
 
-def _extract_lines(results) -> list[str]:
-    lines = []
-    if results and results[0]:
-        for line in results[0]:
-            lines.append(line[1][0])
-    return lines
-
-
 def run_ocr_on_image(img: np.ndarray) -> str:
-    arabic_lines = _extract_lines(get_ocr("arabic").ocr(img, cls=True))
-    french_lines = _extract_lines(get_ocr("french").ocr(img, cls=True))
-    return "\n".join(arabic_lines + french_lines)
+    results = get_reader().readtext(img, detail=0)
+    return "\n".join(results)
 
 
 def run_ocr_on_bytes(data: bytes, mime_type: str = "") -> str:
